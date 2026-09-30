@@ -70,6 +70,35 @@ button:disabled{opacity:.45}
   .recipes{grid-template-columns:1fr}
   #dirTag{top:130px}
 }
+
+/* ===== Mobile portrait optimization ===== */
+@media (max-width:760px){
+  body{background:#93d6e8;}
+  #gameWrap{width:100vw;height:100dvh;max-width:none;}
+  .topbar{left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));gap:6px;}
+  .stats{max-width:57vw;padding:8px 9px;border-radius:16px;}
+  .title{font-size:14px;line-height:1.2;}
+  .small{font-size:10.5px;line-height:1.3;}
+  .inventory{max-width:39vw;padding:6px;gap:4px;border-radius:16px;}
+  .chip{min-width:44px;padding:5px 6px;font-size:11px;border-radius:10px;}
+  #dirTag{display:none;}
+  #hint{display:none;}
+  #controls{left:8px;bottom:calc(10px + env(safe-area-inset-bottom));gap:7px;}
+  #joystick{width:104px;height:104px;}
+  #stick{left:32px;top:32px;width:40px;height:40px;}
+  .sideButtons{gap:6px;}
+  .sideButtons button{min-width:72px;padding:9px 10px;font-size:12px;}
+  .actions{right:8px;bottom:calc(126px + env(safe-area-inset-bottom));gap:6px;}
+  .actions button{padding:9px 11px;font-size:12px;min-width:74px;}
+  #toast{top:calc(108px + env(safe-area-inset-top));font-size:12px;max-width:78vw;}
+  #craftPanel{bottom:calc(12px + env(safe-area-inset-bottom));width:94vw;max-height:62dvh;overflow:auto;}
+  .recipes{grid-template-columns:1fr 1fr;}
+  .recipe{padding:9px;}
+  #startCard{width:88vw;padding:16px 14px;}
+  #startCard h1{font-size:21px;}
+  #startCard p{font-size:13px;}
+}
+
 </style>
 </head>
 <body>
@@ -78,8 +107,8 @@ button:disabled{opacity:.45}
 
   <div class="topbar">
     <div class="card stats">
-      <div class="title">🐶 妞妞小島・自由建造版</div>
-      <div class="small" id="statusText">已修正角色背景，妞妞現在是透明底，並會依照移動方向轉身。</div>
+      <div class="title">🐶 妞妞小島・手機優化版</div>
+      <div class="small" id="statusText">手機直式版已調整：地圖不再拉伸，操作介面也重新縮排。</div>
     </div>
     <div class="card inventory">
       <div class="chip">🪵 <span id="wood">0</span></div>
@@ -586,8 +615,12 @@ canvas.addEventListener('pointerleave',()=>{ buildPointerDown=false; });
 
 function drawGround(){
   const bg = assetImages.mapbg;
-  if(bg && bg.complete){
-    ctx.drawImage(bg,0,0,W,H);
+  if(bg && bg.complete && bg.naturalWidth){
+    const iw=bg.naturalWidth, ih=bg.naturalHeight;
+    const scale=Math.max(W/iw,H/ih);
+    const dw=iw*scale, dh=ih*scale;
+    const dx=(W-dw)/2, dy=(H-dh)/2;
+    ctx.drawImage(bg,dx,dy,dw,dh);
   } else {
     ctx.fillStyle='#9fd58b';
     ctx.fillRect(0,0,W,H);
@@ -756,7 +789,8 @@ function drawPlayer(){
   ctx.translate(player.x,player.y + walkBob);
   ctx.beginPath(); ctx.ellipse(0,25,24,7,0,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,.15)'; ctx.fill();
   const d = DIRS[player.dirIndex];
-  const dw = 82, dh = 104;
+  const mobileScale = W < 500 ? 0.82 : 1;
+  const dw = 82*mobileScale, dh = 104*mobileScale;
   const simg = spriteImages[d.img];
   if(simg && simg.complete){
     const ratio = Math.min(dw/simg.naturalWidth, dh/simg.naturalHeight);
@@ -821,7 +855,7 @@ function update(dt){
     }
   }
   player.x=Math.max(24,Math.min(W-24,player.x));
-  player.y=Math.max(108,Math.min(H-28,player.y));
+  player.y=Math.max(108,Math.min(H-(W<500?120:28),player.y));
 }
 function render(){ drawGround(); drawForestZone(); placed.forEach(drawPlaced); resources.forEach(drawResource); if(forestUnlocked) forestResources.forEach(drawResource); drawParticles(); drawBuildPreview(); drawPlayer(); }
 function loop(now){ const dt=Math.min(.035,(now-last)/1000); last=now; update(dt); render(); updateUI(); requestAnimationFrame(loop); }
