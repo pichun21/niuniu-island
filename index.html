@@ -185,12 +185,23 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const wrap = document.getElementById('gameWrap');
 let W=0,H=0,dpr=1;
+const WORLD_W=1500;
+const WORLD_H=1100;
+const camera={x:0,y:0};
+
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
+
 function resize(){
   dpr=Math.min(2,window.devicePixelRatio||1);
   W=wrap.clientWidth; H=wrap.clientHeight;
   canvas.width=W*dpr; canvas.height=H*dpr;
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  if(player){player.x=Math.min(W-40,Math.max(40,player.x||W*.5));player.y=Math.min(H-40,Math.max(120,player.y||H*.62));}
+
+  if(typeof player!=='undefined' && player){
+    player.x=clamp(player.x||WORLD_W*.5,40,WORLD_W-40);
+    player.y=clamp(player.y||WORLD_H*.58,80,WORLD_H-40);
+  }
+  updateCamera(true);
 }
 addEventListener('resize',resize);
 
@@ -270,7 +281,24 @@ function toast(msg){
   clearTimeout(toast.t); toast.t=setTimeout(()=>ui.toast.style.opacity=0,1000);
 }
 
+
 const player={x:0,y:0,speed:220,r:28,bob:0,dirIndex:0};
+
+function updateCamera(snap=false){
+  const maxX=Math.max(0,WORLD_W-W);
+  const maxY=Math.max(0,WORLD_H-H);
+  const targetX=clamp(player.x-W*0.5,0,maxX);
+  const targetY=clamp(player.y-H*0.52,0,maxY);
+
+  if(snap){
+    camera.x=targetX;
+    camera.y=targetY;
+  }else{
+    camera.x += (targetX-camera.x)*0.12;
+    camera.y += (targetY-camera.y)*0.12;
+  }
+}
+
 let heldBuild=null;
 let buildMode=false;
 let buildPreview={x:0,y:0,rotation:0,valid:false};
@@ -280,14 +308,14 @@ let moveTarget=null;
 function rand(a,b){return a+Math.random()*(b-a)}
 function collides(x,y,arr,dist=58){return arr.some(o=>Math.hypot(o.x-x,o.y-y)<dist)}
 function isPlayableSpot(x,y,type='generic'){
-  const marginX = 110, marginTop = 95, marginBottom = 90;
-  if(x < marginX || x > W-marginX || y < marginTop || y > H-marginBottom) return false;
-  // avoid pond / right-top water area
-  const pondX = W*0.79, pondY = H*0.24, rx = 150, ry = 110;
+  const marginX = 95, marginTop = 75, marginBottom = 75;
+  if(x < marginX || x > WORLD_W-marginX || y < marginTop || y > WORLD_H-marginBottom) return false;
+  // approximate pond / right-top water area on the world map
+  const pondX = WORLD_W*0.78, pondY = WORLD_H*0.25, rx = 185, ry = 135;
   const inPond = (((x-pondX)*(x-pondX))/(rx*rx) + ((y-pondY)*(y-pondY))/(ry*ry)) < 1.0;
   if(inPond) return false;
   // keep away from far lower-left beach edge and top-left shore
-  if(x < 170 && y > H-150) return false;
+  if(x < 190 && y > WORLD_H-150) return false;
   if(x < 160 && y < 160) return false;
   return true;
 }
@@ -300,7 +328,7 @@ function createResource(type){
 function placeResource(type, arr, maxTries=300){
   for(let i=0;i<maxTries;i++){
     const o=createResource(type);
-    o.x=rand(80,W-80); o.y=rand(105,H-75);
+    o.x=rand(95,WORLD_W-95); o.y=rand(90,WORLD_H-80);
     let gap = type==='tree' ? 88 : (type==='stone' ? 60 : 48);
     if(isPlayableSpot(o.x,o.y,type) && !collides(o.x,o.y,arr,gap)) return o;
   }
@@ -318,13 +346,13 @@ function makeFlowers(){
   for(let i=0;i<18;i++){
     let placed=false;
     for(let t=0;t<150;t++){
-      const x=rand(24,W-24), y=rand(H*.16,H-30);
+      const x=rand(28,WORLD_W-28), y=rand(90,WORLD_H-30);
       if(!collides(x,y,resources,36) && !collides(x,y,arr,34)){
         arr.push({x,y,scale:0.22+Math.random()*0.12,flip:Math.random()<0.5?-1:1});
         placed=true; break;
       }
     }
-    if(!placed) arr.push({x:rand(24,W-24),y:rand(H*.16,H-30),scale:0.24,flip:1});
+    if(!placed) arr.push({x:rand(28,WORLD_W-28),y:rand(90,WORLD_H-30),scale:0.24,flip:1});
   }
   return arr;
 }
@@ -334,7 +362,7 @@ let decorFlowers=[];
 let forestResources=[];
 
 function forestRect(){
-  return {x:0, y:84, w:Math.max(260,W*0.34), h:Math.max(235,H*0.43)};
+  return {x:0, y:90, w:430, h:430};
 }
 function isInForest(x,y){
   const f=forestRect();
@@ -481,7 +509,7 @@ function gather(){
 
 document.getElementById('gatherBtn').onclick=gather;
 document.getElementById('actionBtn').onclick=gather;
-document.getElementById('centerBtn').onclick=()=>{moveTarget={x:W*.5,y:H*.62};};
+document.getElementById('centerBtn').onclick=()=>{moveTarget={x:WORLD_W*.5,y:WORLD_H*.58};};
 
 document.getElementById('craftBtn').onclick=()=>craft.style.display='block';
 const craft=document.getElementById('craftPanel');
@@ -508,8 +536,9 @@ function isBuildValid(x,y,type){
 }
 function setBuildPreview(x,y){
   if(!buildMode || !heldBuild) return;
-  buildPreview.x=Math.max(40,Math.min(W-40,x));
-  buildPreview.y=Math.max(100,Math.min(H-40,y));
+  const grid=18;
+  buildPreview.x=clamp(Math.round(x/grid)*grid,50,WORLD_W-50);
+  buildPreview.y=clamp(Math.round(y/grid)*grid,70,WORLD_H-50);
   buildPreview.valid=isBuildValid(buildPreview.x,buildPreview.y,heldBuild);
   ui.buildTip.textContent=buildPreview.valid?'✓ 這裡可以放':'✕ 這裡不能放';
 }
@@ -517,7 +546,7 @@ function enterBuildMode(){
   if(!heldBuild) return;
   buildMode=true; moveTarget=null;
   setBuildPreview(player.x+80,player.y+24);
-  ui.status.textContent='建造模式：點一下地面選定位置；位置會固定，再按「確認放置」。';
+  ui.status.textContent='建造模式：物件會吸附地面位置；點「旋轉」只切換朝向，不會把房子整棟轉倒。';
   updateUI();
 }
 function exitBuildMode(keepItem=true){
@@ -568,7 +597,7 @@ document.getElementById('confirmBuild').onclick=confirmBuild;
 document.getElementById('cancelBuild').onclick=()=>exitBuildMode(true);
 document.getElementById('rotateBuild').onclick=()=>{
   if(!buildMode) return;
-  buildPreview.rotation=(buildPreview.rotation+Math.PI/2)%(Math.PI*2);
+  buildPreview.rotation = buildPreview.rotation ? 0 : 1;
   toast('旋轉 90°');
 };
 
@@ -624,14 +653,15 @@ joyEl.addEventListener('touchcancel',joyTouchEnd,{passive:false});
 
 function pointerGamePos(clientX,clientY){
   const r=canvas.getBoundingClientRect();
-  return {x:clientX-r.left,y:clientY-r.top};
+  const sx=clientX-r.left, sy=clientY-r.top;
+  return {sx,sy,x:sx+camera.x,y:sy+camera.y};
 }
 function setTapTarget(clientX, clientY){
   const pos=pointerGamePos(clientX,clientY);
   const x=pos.x, y=pos.y;
-  if(y<90) return;
+  if(pos.sy<90) return;
   if(buildMode){ setBuildPreview(x,y); return; }
-  moveTarget={x:Math.max(24,Math.min(W-24,x)), y:Math.max(105,Math.min(H-24,y))};
+  moveTarget={x:clamp(x,24,WORLD_W-24), y:clamp(y,60,WORLD_H-24)};
 }
 let buildPointerDown=false;
 canvas.addEventListener('pointerdown',e=>{
@@ -706,13 +736,13 @@ function drawGround(){
   const bg = assetImages.mapbg;
   if(bg && bg.complete && bg.naturalWidth){
     const iw=bg.naturalWidth, ih=bg.naturalHeight;
-    const scale=Math.max(W/iw,H/ih);
+    const scale=Math.max(WORLD_W/iw,WORLD_H/ih);
     const dw=iw*scale, dh=ih*scale;
-    const dx=(W-dw)/2, dy=(H-dh)/2;
+    const dx=(WORLD_W-dw)/2, dy=(WORLD_H-dh)/2;
     ctx.drawImage(bg,dx,dy,dw,dh);
   } else {
     ctx.fillStyle='#9fd58b';
-    ctx.fillRect(0,0,W,H);
+    ctx.fillRect(0,0,WORLD_W,WORLD_H);
   }
 }
 
@@ -824,24 +854,26 @@ function drawResource(r){
   ctx.restore();
 }
 function drawPlaced(p){
-  ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rotation||0); ctx.textAlign='center';
+  ctx.save();
+  ctx.translate(p.x,p.y);
+  const flip = p.rotation ? -1 : 1;
+  ctx.scale(flip,1);
+  ctx.textAlign='center';
+
   if(p.type==='campfire'){
-    const img = assetImages.campfire1;
-    const w=74, h=74;
-    ctx.beginPath(); ctx.ellipse(0,22,22,8,0,0,Math.PI*2); ctx.fillStyle='rgba(89,66,48,.16)'; ctx.fill();
-    if(img) ctx.drawImage(img,-w/2,-h*0.66,w,h);
-  }
-  else if(p.type==='crate'){
-    const img = assetImages.crate1;
-    const w=66, h=66;
-    ctx.beginPath(); ctx.ellipse(0,20,21,8,0,0,Math.PI*2); ctx.fillStyle='rgba(89,66,48,.14)'; ctx.fill();
-    if(img) ctx.drawImage(img,-w/2,-h*0.7,w,h);
-  }
-  else {
-    const img = assetImages.doghouse1;
-    const w=90, h=90;
-    ctx.beginPath(); ctx.ellipse(0,26,28,10,0,0,Math.PI*2); ctx.fillStyle='rgba(89,66,48,.16)'; ctx.fill();
-    if(img) ctx.drawImage(img,-w/2,-h*0.74,w,h);
+    const img=assetImages.campfire1, w=58, h=58;
+    ctx.beginPath(); ctx.ellipse(0,5,22,8,0,0,Math.PI*2); ctx.fillStyle='rgba(76,63,45,.18)'; ctx.fill();
+    if(img) ctx.drawImage(img,-w/2,-h+9,w,h);
+  }else if(p.type==='crate'){
+    const img=assetImages.crate1, w=54, h=54;
+    ctx.beginPath(); ctx.ellipse(0,5,21,8,0,0,Math.PI*2); ctx.fillStyle='rgba(76,63,45,.15)'; ctx.fill();
+    if(img) ctx.drawImage(img,-w/2,-h+8,w,h);
+  }else{
+    const img=assetImages.doghouse1, w=76, h=76;
+    // soft grass footprint + contact shadow to make the house sit on the map
+    ctx.beginPath(); ctx.ellipse(0,5,39,15,0,0,Math.PI*2); ctx.fillStyle='rgba(117,160,83,.18)'; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0,6,29,9,0,0,Math.PI*2); ctx.fillStyle='rgba(70,58,42,.15)'; ctx.fill();
+    if(img) ctx.drawImage(img,-w/2,-h+8,w,h);
   }
   ctx.restore();
 }
@@ -852,19 +884,23 @@ function drawBuildPreview(){
   const rr=buildRadius(heldBuild);
   ctx.save();
   ctx.translate(buildPreview.x,buildPreview.y);
+
+  // footprint follows the map plane; the sprite itself always stays upright.
   ctx.beginPath();
-  ctx.ellipse(0,8,rr,Math.max(14,rr*0.45),0,0,Math.PI*2);
-  ctx.fillStyle=buildPreview.valid?'rgba(89,190,105,.25)':'rgba(220,82,82,.25)';
+  ctx.ellipse(0,5,rr,Math.max(11,rr*.38),0,0,Math.PI*2);
+  ctx.fillStyle=buildPreview.valid?'rgba(89,190,105,.22)':'rgba(220,82,82,.22)';
   ctx.strokeStyle=buildPreview.valid?'rgba(65,158,80,.95)':'rgba(201,61,61,.95)';
-  ctx.lineWidth=3; ctx.fill(); ctx.stroke();
-  ctx.rotate(buildPreview.rotation||0);
-  ctx.globalAlpha=.68;
+  ctx.lineWidth=2.5; ctx.fill(); ctx.stroke();
+
+  const flip=buildPreview.rotation?-1:1;
+  ctx.scale(flip,1);
+  ctx.globalAlpha=.72;
   if(heldBuild==='campfire'){
-    const img=assetImages.campfire1,w=74,h=74; if(img) ctx.drawImage(img,-w/2,-h*.66,w,h);
-  } else if(heldBuild==='crate'){
-    const img=assetImages.crate1,w=66,h=66; if(img) ctx.drawImage(img,-w/2,-h*.7,w,h);
-  } else {
-    const img=assetImages.doghouse1,w=90,h=90; if(img) ctx.drawImage(img,-w/2,-h*.74,w,h);
+    const img=assetImages.campfire1,w=58,h=58; if(img) ctx.drawImage(img,-w/2,-h+9,w,h);
+  }else if(heldBuild==='crate'){
+    const img=assetImages.crate1,w=54,h=54; if(img) ctx.drawImage(img,-w/2,-h+8,w,h);
+  }else{
+    const img=assetImages.doghouse1,w=76,h=76; if(img) ctx.drawImage(img,-w/2,-h+8,w,h);
   }
   ctx.restore();
 }
@@ -913,7 +949,7 @@ let last=performance.now();
 function update(dt){
   updateFeedback(dt);
   for(const r of resources.concat(forestResources)){ if(r.breaking) r.breakTime=Math.max(0,(r.breakTime||0)-dt); }
-  if(buildMode){ buildPreview.valid=isBuildValid(buildPreview.x,buildPreview.y,heldBuild); return; }
+  if(buildMode){ buildPreview.valid=isBuildValid(buildPreview.x,buildPreview.y,heldBuild); updateCamera(false); return; }
   let dx=0, dy=0;
   if(keys['a']||keys['arrowleft']) dx--;
   if(keys['d']||keys['arrowright']) dx++;
@@ -946,10 +982,42 @@ function update(dt){
   player.x=Math.max(24,Math.min(W-24,player.x));
   player.y=Math.max(108,Math.min(H-(W<500?120:28),player.y));
 }
-function render(){ drawGround(); drawForestZone(); placed.forEach(drawPlaced); resources.forEach(drawResource); if(forestUnlocked) forestResources.forEach(drawResource); drawParticles(); drawBuildPreview(); drawPlayer(); }
+function render(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  ctx.translate(-camera.x,-camera.y);
+  drawGround();
+  drawForestZone();
+
+  const scene=[];
+  for(const p of placed) scene.push({y:p.y,kind:'placed',obj:p});
+  for(const r of resources) scene.push({y:r.y,kind:'resource',obj:r});
+  if(forestUnlocked) for(const r of forestResources) scene.push({y:r.y,kind:'resource',obj:r});
+  scene.push({y:player.y,kind:'player',obj:player});
+  scene.sort((a,b)=>a.y-b.y);
+
+  for(const item of scene){
+    if(item.kind==='placed') drawPlaced(item.obj);
+    else if(item.kind==='resource') drawResource(item.obj);
+    else drawPlayer();
+  }
+
+  drawParticles();
+  drawBuildPreview();
+  ctx.restore();
+}
 function loop(now){ const dt=Math.min(.035,(now-last)/1000); last=now; update(dt); render(); updateUI(); requestAnimationFrame(loop); }
 
-function init(){ resize(); resources=makeResources(); decorFlowers=makeFlowers(); player.x=W*.5; player.y=H*.62; updateUI(); requestAnimationFrame(loop); }
+function init(){
+  resize();
+  resources=makeResources();
+  decorFlowers=makeFlowers();
+  player.x=WORLD_W*.52;
+  player.y=WORLD_H*.60;
+  updateCamera(true);
+  updateUI();
+  requestAnimationFrame(loop);
+}
 init();
 document.getElementById('startBtn').onclick=()=>{ document.getElementById('startShade').style.display='none'; toast('目標：收集木頭 4＋石頭 3，製作石斧解鎖森林'); };
 
