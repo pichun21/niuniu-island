@@ -2,14 +2,14 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover" />
 <title>妞妞小島｜8方向版</title>
 <style>
 :root{--panel:rgba(255,255,255,.93);--ink:#2f3a33;--muted:#66746a;--accent:#84b96f;--accent2:#f3ca7c;--shadow:0 10px 28px rgba(54,77,58,.16)}
 *{box-sizing:border-box}
 body{margin:0;background:linear-gradient(#ddf2ff 0 42%,#eef7e5 42%);font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif;color:var(--ink);overflow:hidden}
 #gameWrap{position:relative;width:100vw;height:100vh;max-width:1280px;margin:auto;overflow:hidden}
-canvas{display:block;width:100%;height:100%;touch-action:none}
+canvas{display:block;width:100%;height:100%;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .topbar{position:absolute;left:12px;right:12px;top:12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;pointer-events:none;z-index:5}
 .card{background:var(--panel);border:1px solid rgba(255,255,255,.88);border-radius:18px;box-shadow:var(--shadow);pointer-events:auto;backdrop-filter:blur(8px)}
 .stats{padding:10px 12px;min-width:220px;max-width:min(62vw,460px)}
@@ -31,7 +31,7 @@ button:disabled{opacity:.45}
 .recipe span{font-size:12px;color:var(--muted)}
 .closeBtn{float:right;background:#eef3ea;padding:6px 9px;box-shadow:none}
 #controls{position:absolute;left:12px;bottom:16px;display:flex;align-items:flex-end;gap:10px;z-index:6}
-#joystick{position:relative;width:126px;height:126px;border-radius:50%;background:rgba(255,255,255,.28);border:2px solid rgba(255,255,255,.7);touch-action:none;box-shadow:var(--shadow)}
+#joystick{position:relative;width:126px;height:126px;border-radius:50%;background:rgba(255,255,255,.28);border:2px solid rgba(255,255,255,.7);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;box-shadow:var(--shadow)}
 #stick{position:absolute;left:38px;top:38px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 8px 20px rgba(0,0,0,.12)}
 .sideButtons{display:flex;flex-direction:column;gap:8px}
 .sideButtons button{min-width:82px}
@@ -97,6 +97,20 @@ button:disabled{opacity:.45}
   #startCard{width:88vw;padding:16px 14px;}
   #startCard h1{font-size:21px;}
   #startCard p{font-size:13px;}
+}
+
+
+html, body, #gameWrap, canvas {
+  touch-action: none !important;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+button, .card, #controls, #joystick, #stick {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 </style>
@@ -569,10 +583,44 @@ function joyMove(t){
   joy.dx=x/max; joy.dy=y/max; moveTarget=null;
   stick.style.transform=`translate(${x}px, ${y}px)`;
 }
-joyEl.addEventListener('pointerdown',e=>{joy.active=true; joy.id=e.pointerId; joyEl.setPointerCapture(e.pointerId); joyMove(e);});
+joyEl.addEventListener('pointerdown',e=>{joy.active=true; joy.id=e.pointerId; try{ if(joyEl.setPointerCapture) joyEl.setPointerCapture(e.pointerId); }catch(_e){} joyMove(e);});
 joyEl.addEventListener('pointermove',e=>{if(joy.active && e.pointerId===joy.id) joyMove(e);});
 function joyEnd(e){if(e.pointerId!==joy.id) return; joy.active=false; joy.dx=joy.dy=0; stick.style.transform='translate(0,0)';}
 joyEl.addEventListener('pointerup',joyEnd); joyEl.addEventListener('pointercancel',joyEnd);
+
+// iPad / iOS Safari touch fallback.
+let joyTouchId=null;
+function getTouchById(list,id){
+  for(let i=0;i<list.length;i++) if(list[i].identifier===id) return list[i];
+  return null;
+}
+joyEl.addEventListener('touchstart',e=>{
+  if(!e.changedTouches.length) return;
+  e.preventDefault();
+  const t=e.changedTouches[0];
+  joyTouchId=t.identifier;
+  joy.active=true;
+  joy.id=null;
+  joyMove(t);
+},{passive:false});
+joyEl.addEventListener('touchmove',e=>{
+  if(!joy.active) return;
+  const t=getTouchById(e.touches,joyTouchId);
+  if(!t) return;
+  e.preventDefault();
+  joyMove(t);
+},{passive:false});
+function joyTouchEnd(e){
+  const t=getTouchById(e.changedTouches,joyTouchId);
+  if(!t) return;
+  e.preventDefault();
+  joy.active=false;
+  joy.dx=joy.dy=0;
+  joyTouchId=null;
+  stick.style.transform='translate(0,0)';
+}
+joyEl.addEventListener('touchend',joyTouchEnd,{passive:false});
+joyEl.addEventListener('touchcancel',joyTouchEnd,{passive:false});
 
 function pointerGamePos(clientX,clientY){
   const r=canvas.getBoundingClientRect();
@@ -612,6 +660,47 @@ canvas.addEventListener('pointermove',e=>{
 canvas.addEventListener('pointerup',()=>{ buildPointerDown=false; });
 canvas.addEventListener('pointercancel',()=>{ buildPointerDown=false; });
 canvas.addEventListener('pointerleave',()=>{ buildPointerDown=false; });
+
+// Direct touch control fallback for iPad Safari.
+let canvasTouchId=null;
+canvas.addEventListener('touchstart',e=>{
+  if(document.getElementById('startShade').style.display!=='none') return;
+  if(!e.changedTouches.length) return;
+  // Ignore touches that started on the virtual joystick area.
+  const t=e.changedTouches[0];
+  const jr=joyEl.getBoundingClientRect();
+  if(t.clientX>=jr.left && t.clientX<=jr.right && t.clientY>=jr.top && t.clientY<=jr.bottom) return;
+  e.preventDefault();
+  canvasTouchId=t.identifier;
+  if(buildMode){
+    buildPointerDown=true;
+    const pos=pointerGamePos(t.clientX,t.clientY);
+    setBuildPreview(pos.x,pos.y);
+    ui.buildTip.textContent = buildPreview.valid ? '✓ 位置已選定，可按確認放置' : '✕ 這裡不能放';
+  }else{
+    setTapTarget(t.clientX,t.clientY);
+  }
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  const t=getTouchById(e.touches,canvasTouchId);
+  if(!t) return;
+  e.preventDefault();
+  if(buildMode && buildPointerDown){
+    const pos=pointerGamePos(t.clientX,t.clientY);
+    setBuildPreview(pos.x,pos.y);
+  }else if(!buildMode && !joy.active){
+    setTapTarget(t.clientX,t.clientY);
+  }
+},{passive:false});
+function endCanvasTouch(e){
+  const t=getTouchById(e.changedTouches,canvasTouchId);
+  if(!t) return;
+  e.preventDefault();
+  canvasTouchId=null;
+  buildPointerDown=false;
+}
+canvas.addEventListener('touchend',endCanvasTouch,{passive:false});
+canvas.addEventListener('touchcancel',endCanvasTouch,{passive:false});
 
 function drawGround(){
   const bg = assetImages.mapbg;
@@ -863,6 +952,26 @@ function loop(now){ const dt=Math.min(.035,(now-last)/1000); last=now; update(dt
 function init(){ resize(); resources=makeResources(); decorFlowers=makeFlowers(); player.x=W*.5; player.y=H*.62; updateUI(); requestAnimationFrame(loop); }
 init();
 document.getElementById('startBtn').onclick=()=>{ document.getElementById('startShade').style.display='none'; toast('目標：收集木頭 4＋石頭 3，製作石斧解鎖森林'); };
+
+// iPhone / iPad Safari: prevent accidental page zoom while playing.
+document.addEventListener('gesturestart', e => e.preventDefault(), {passive:false});
+document.addEventListener('gesturechange', e => e.preventDefault(), {passive:false});
+document.addEventListener('gestureend', e => e.preventDefault(), {passive:false});
+
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 320) e.preventDefault();
+  lastTouchEnd = now;
+}, {passive:false});
+
+document.addEventListener('dblclick', e => e.preventDefault(), {passive:false});
+
+// Prevent two-finger pinch/scroll gestures from being handled by the page.
+document.addEventListener('touchmove', e => {
+  if (e.touches && e.touches.length > 1) e.preventDefault();
+}, {passive:false});
+
 </script>
 </body>
 </html>
